@@ -1,1 +1,1 @@
-# stocking
+stock cli
