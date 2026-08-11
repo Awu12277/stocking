@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import { Box, Text, useInput } from "ink";
-import React, { useState, useCallback, useEffect, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import asciichart from "asciichart";
 import type { StockRow, StockSymbol } from "./types.js";
 import { useDoubleCtrlC } from "./useDoubleCtrlC.js";
@@ -14,7 +14,7 @@ import {
   setCachedMinute,
   _clearMinuteCache,
 } from "./market.js";
-import { SETTINGS_PATH } from "./settings.js";
+import { SETTINGS_PATH, saveStockConfig } from "./settings.js";
 
 // ---------------------------------------------------------------------------
 // OSC 8 终端超链接（点击打开 settings.json）
@@ -91,6 +91,14 @@ export function StockList({ symbols, onExit }: StockListProps) {
   );
   const [dimMode, setDimMode] = useState(false);
 
+  // 自选股配置（含目标价）。初始来自 props；详情页设置目标价后同步更新并写回 settings.json
+  const [configSymbols, setConfigSymbols] = useState<StockSymbol[]>(symbols ?? []);
+  /** 目标价编辑态：null 未编辑；否则记录正在编辑的方向与已输入字符串 */
+  const [targetEdit, setTargetEdit] = useState<{ type: "buy" | "sell"; value: string } | null>(null);
+  /** 操作反馈（如 "✔ 已设置买入目标价 32.500"），3 秒后自动消失 */
+  const [flashMsg, setFlashMsg] = useState<{ text: string; color: string } | null>(null);
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   type SortOrder = "default" | "asc" | "desc";
   const [sortOrder, setSortOrder] = useState<SortOrder>("default");
 
@@ -115,8 +123,8 @@ export function StockList({ symbols, onExit }: StockListProps) {
 
   // 目标价查找表（code -> 配置），行情返回后按 code 合并
   const symbolMap = useMemo(
-    () => new Map((symbols ?? []).map((s) => [s.code, s])),
-    [symbols],
+    () => new Map(configSymbols.map((s) => [s.code, s])),
+    [configSymbols],
   );
 
   // 数据加载
@@ -144,6 +152,81 @@ export function StockList({ symbols, onExit }: StockListProps) {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  // 操作反馈：3 秒后自动消失
+  const showFlash = useCallback((text: string, color = "#ffcc00") => {
+    setFlashMsg({ text, color });
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    flashTimerRef.current = setTimeout(() => setFlashMsg(null), 3000);
+  }, []);
+
+  /** 把目标价写入配置 + 内存行 + 详情视图；price 传 undefined 表示清除该方向 */
+  const applyTarget = useCallback(
+    (code: string, type: "buy" | "sell", price: number | undefined) => {
+      const key = type === "buy" ? "buyPrice" : "sellPrice";
+      const existing = configSymbols.some((s) => s.code === code);
+      // 该股从未配置且本次是清除 → 无操作
+      if (!existing && price === undefined) return;
+
+      let next: StockSymbol[];
+      if (existing) {
+        next = configSymbols.map((s) => {
+          if (s.code !== code) return s;
+          const copy = { ...s };
+          if (price === undefined) delete copy[key];
+          else copy[key] = price;
+          return copy;
+        });
+      } else {
+        // 临时查看的股票：设置目标价即写入 settings.json（下次启动成为自选股）
+        next = [...configSymbols, { code, [key]: price } as StockSymbol];
+      }
+      setConfigSymbols(next);
+      saveStockConfig(next);
+
+      // 同步列表行
+      setStocks((rows) =>
+        rows.map((r) => {
+          if (r.code !== code) return r;
+          const copy = { ...r };
+          if (price === undefined) delete copy[key];
+          else copy[key] = price;
+          return copy;
+        }),
+      );
+      // 同步详情视图（目标价区展示）
+      setDetailView((dv) => {
+        if (!dv || dv.code !== code) return dv;
+        const copy = { ...dv };
+        if (price === undefined) delete copy[key];
+        else copy[key] = price;
+        return copy;
+      });
+    },
+    [configSymbols],
+  );
+
+  /** 编辑模式下回车：空输入=清除；非法值=提示；合法正数=保存 */
+  const confirmTargetEdit = useCallback(() => {
+    if (!targetEdit || !detailView) return;
+    const { type, value } = targetEdit;
+    const code = detailView.code;
+    const label = type === "buy" ? "买入" : "卖出";
+    setTargetEdit(null);
+
+    if (value.trim() === "") {
+      applyTarget(code, type, undefined);
+      showFlash(`已清除${label}目标价`, "#888888");
+      return;
+    }
+    const price = parseFloat(value);
+    if (!isFinite(price) || price <= 0) {
+      showFlash("✘ 价格无效，未保存", "#ff5555");
+      return;
+    }
+    applyTarget(code, type, price);
+    showFlash(`✔ 已设置${label}目标价 ${formatPrice(price)}`, "#00ff41");
+  }, [targetEdit, detailView, applyTarget, showFlash]);
 
   // 列表自动刷新
   useEffect(() => {
@@ -199,12 +282,42 @@ export function StockList({ symbols, onExit }: StockListProps) {
           handleCtrlC();
           return;
         }
-        if (detailView) {
-          if (key.escape || input === "q" || input === " ") {
-            setDetailView(null);
+
+        // —— 目标价编辑模式（拦截所有按键）——
+        if (targetEdit) {
+          if (key.escape) {
+            setTargetEdit(null);
+          } else if (key.return) {
+            confirmTargetEdit();
+          } else if (key.backspace || key.delete) {
+            setTargetEdit((prev) =>
+              prev ? { ...prev, value: prev.value.slice(0, -1) } : prev,
+            );
+          } else if (/^[0-9.]$/.test(input)) {
+            setTargetEdit((prev) => {
+              if (!prev || prev.value.length >= 10) return prev;
+              if (input === "." && prev.value.includes(".")) return prev; // 防重复小数点
+              const next = prev.value + input;
+              if (!/^\d*\.?\d{0,2}$/.test(next)) return prev; // 最多两位小数
+              return { ...prev, value: next };
+            });
           }
           return;
         }
+
+        // —— 详情视图 ——
+        if (detailView) {
+          if (key.escape || input === "q" || input === " ") {
+            setDetailView(null);
+          } else if (input === "b") {
+            setTargetEdit({ type: "buy", value: "" });
+          } else if (input === "s") {
+            setTargetEdit({ type: "sell", value: "" });
+          }
+          return;
+        }
+
+        // —— 列表视图 ——
         if (stocks.length === 0) return;
         if (key.upArrow || input === "k") {
           setSelectedIndex((prev) => (prev > 0 ? prev - 1 : stocks.length - 1));
@@ -226,7 +339,16 @@ export function StockList({ symbols, onExit }: StockListProps) {
           setDimMode((v) => !v);
         }
       },
-      [stocks, selectedIndex, detailView, onExit, loadData, handleCtrlC],
+      [
+        stocks,
+        selectedIndex,
+        detailView,
+        targetEdit,
+        onExit,
+        loadData,
+        handleCtrlC,
+        confirmTargetEdit,
+      ],
     ),
   );
 
@@ -234,7 +356,8 @@ export function StockList({ symbols, onExit }: StockListProps) {
   if (detailView) {
     return renderDetail(
       detailView,
-      () => setDetailView(null),
+      targetEdit,
+      flashMsg,
       detailPrices ?? undefined,
       detailCountdown,
       currentTime,
@@ -378,7 +501,8 @@ export function StockList({ symbols, onExit }: StockListProps) {
 
 function renderDetail(
   stock: StockRow,
-  _onBack: () => void,
+  targetEdit: { type: "buy" | "sell"; value: string } | null,
+  flashMsg: { text: string; color: string } | null,
   prices?: number[],
   countdown = 10,
   currentTime?: string,
@@ -386,6 +510,7 @@ function renderDetail(
   const isUp = stock.changePercent >= 0;
   const colorCode = isUp ? "#ff1493" : "#00ff41";
   const arrow = isUp ? "▲" : "▼";
+  const editing = targetEdit !== null;
 
   let chartLines: string[] = [];
   if (prices && prices.length > 0) {
@@ -441,6 +566,47 @@ function renderDetail(
         </Box>
       </Box>
 
+      {/* 目标价配置 */}
+      <Box marginTop={1}>
+        <Box width={16}>
+          <Text color="#888888">买入目标价</Text>
+        </Box>
+        <Box width={12}>
+          <Text color="#00ff41">
+            {stock.buyPrice !== undefined ? formatPrice(stock.buyPrice) : "—"}
+          </Text>
+        </Box>
+        <Box width={16}>
+          <Text color="#888888">卖出目标价</Text>
+        </Box>
+        <Box>
+          <Text color="#ff1493">
+            {stock.sellPrice !== undefined ? formatPrice(stock.sellPrice) : "—"}
+          </Text>
+        </Box>
+      </Box>
+
+      {/* 目标价输入框 */}
+      {targetEdit && (
+        <Box marginTop={1}>
+          <Text bold color="#00ffff">
+            {"  "}
+            {targetEdit.type === "buy" ? "买入" : "卖出"}
+            {"目标价: "}
+            {targetEdit.value || " "}
+            {"▏"}
+          </Text>
+          <Text dimColor>{"  Enter 确认（空=清除）  Esc 取消"}</Text>
+        </Box>
+      )}
+
+      {/* 操作反馈 */}
+      {flashMsg && (
+        <Box marginTop={1}>
+          <Text color={flashMsg.color}>{"  "}{flashMsg.text}</Text>
+        </Box>
+      )}
+
       {chartLines.length > 0 && (
         <Box marginTop={1} flexDirection="column">
           {chartLines.map((line, i) => (
@@ -452,7 +618,11 @@ function renderDetail(
       )}
 
       <Box marginTop={1}>
-        <Text dimColor>{"  Space/q 返回列表"}</Text>
+        <Text dimColor>
+          {editing
+            ? "  数字/小数点输入中…"
+            : "  b 买入价  s 卖出价  Space/q 返回"}
+        </Text>
       </Box>
     </Box>
   );
