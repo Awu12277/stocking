@@ -40,12 +40,6 @@ function formatPrice(p: number): string {
   return p >= 100 ? p.toFixed(2) : p.toFixed(3);
 }
 
-/** 名称过长时截断：最多取前 maxLen 个字符（按 Unicode 码点切分，兼容 emoji 等代理对） */
-function truncateName(name: string, maxLen = 5): string {
-  const chars = [...name];
-  return chars.length > maxLen ? chars.slice(0, maxLen).join("") : name;
-}
-
 /** 取最新 maxPoints 个点（用于折线图） */
 function latestPoints(data: number[], maxPoints = 60): number[] {
   if (data.length <= maxPoints) return data;
@@ -384,7 +378,7 @@ export function StockList({ symbols, onExit }: StockListProps) {
         <Box width={9}>
           <Text dimColor>代码</Text>
         </Box>
-        <Box width={9}>
+        <Box width={15}>
           <Text dimColor>名称</Text>
         </Box>
         <Box width={11}>
@@ -413,7 +407,7 @@ export function StockList({ symbols, onExit }: StockListProps) {
       </Box>
 
       <Box>
-        <Text dimColor>{"  " + "─".repeat(84)}</Text>
+        <Text dimColor>{"  " + "─".repeat(90)}</Text>
       </Box>
 
       <Box flexDirection="column">
@@ -438,9 +432,9 @@ export function StockList({ symbols, onExit }: StockListProps) {
                   {stock.code}
                 </Text>
               </Box>
-              <Box width={9}>
+              <Box width={15}>
                 <Text {...cp(isSelected ? "#ffffff" : "#cccccc")}>
-                  {truncateName(stock.name)}
+                  {stock.name}
                 </Text>
               </Box>
               <Box width={11}>
