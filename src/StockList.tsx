@@ -1,20 +1,30 @@
 // ---------------------------------------------------------------------------
-// StockList — 自选股监控 + 详情视图
+// StockList — 多分组自选股监控 + 详情视图
+//
+// 键盘：
+//   列表：↑/↓ 选股  ←/→ 切换分组  Enter 详情  r 刷新  o 排序  h 置灰  q 退出
+//   详情：Esc/q/Space 返回  b 买入价  s 卖出价
+//   编辑：数字/. 输入  Backspace 删除  Enter 确认  Esc 取消
 // ---------------------------------------------------------------------------
 
 import { Box, Text, useInput } from "ink";
 import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import asciichart from "asciichart";
-import type { StockRow, StockSymbol } from "./types.js";
+import type { Group, StockRow } from "./types.js";
 import { useDoubleCtrlC } from "./useDoubleCtrlC.js";
 import {
   fetchStocks,
   fetchStockMinute,
   getCachedMinute,
   setCachedMinute,
-  _clearMinuteCache,
 } from "./market.js";
 import { SETTINGS_PATH, saveStockConfig } from "./settings.js";
+import {
+  applyTargetToGroup,
+  clampGroupIndex,
+  currentGroup,
+  currentSymbols,
+} from "./groups.js";
 
 // ---------------------------------------------------------------------------
 // OSC 8 终端超链接（点击打开 settings.json）
@@ -67,11 +77,16 @@ function getAction(stock: StockRow): (typeof ACTION_STYLE)[keyof typeof ACTION_S
 // ---------------------------------------------------------------------------
 
 export interface StockListProps {
-  symbols?: StockSymbol[];
+  groups: Group[];
   onExit: () => void;
 }
 
-export function StockList({ symbols, onExit }: StockListProps) {
+export function StockList({ groups: initialGroups, onExit }: StockListProps) {
+  // 当前激活的分组下标
+  const [groupIndex, setGroupIndex] = useState(0);
+  // 内存里的全部分组（每次改目标价时整个替换并写回 settings.json）
+  const [groups, setGroups] = useState<Group[]>(initialGroups);
+
   const [stocks, setStocks] = useState<StockRow[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -85,8 +100,6 @@ export function StockList({ symbols, onExit }: StockListProps) {
   );
   const [dimMode, setDimMode] = useState(false);
 
-  // 自选股配置（含目标价）。初始来自 props；详情页设置目标价后同步更新并写回 settings.json
-  const [configSymbols, setConfigSymbols] = useState<StockSymbol[]>(symbols ?? []);
   /** 目标价编辑态：null 未编辑；否则记录正在编辑的方向与已输入字符串 */
   const [targetEdit, setTargetEdit] = useState<{ type: "buy" | "sell"; value: string } | null>(null);
   /** 操作反馈（如 "✔ 已设置买入目标价 32.500"），3 秒后自动消失 */
@@ -95,6 +108,15 @@ export function StockList({ symbols, onExit }: StockListProps) {
 
   type SortOrder = "default" | "asc" | "desc";
   const [sortOrder, setSortOrder] = useState<SortOrder>("default");
+
+  const group = useMemo(() => currentGroup(groups, groupIndex), [groups, groupIndex]);
+  const activeSymbols = useMemo(() => currentSymbols(groups, groupIndex), [groups, groupIndex]);
+
+  // 目标价查找表（code -> 配置），行情返回后按 code 合并
+  const symbolMap = useMemo(
+    () => new Map(activeSymbols.map((s) => [s.code, s])),
+    [activeSymbols],
+  );
 
   const sortedStocks = useMemo(() => {
     if (sortOrder === "default") return stocks;
@@ -115,17 +137,26 @@ export function StockList({ symbols, onExit }: StockListProps) {
     return () => clearInterval(timer);
   }, []);
 
-  // 目标价查找表（code -> 配置），行情返回后按 code 合并
-  const symbolMap = useMemo(
-    () => new Map(configSymbols.map((s) => [s.code, s])),
-    [configSymbols],
-  );
+  // 切组时把选中行重置、退出详情、清空行情缓冲
+  useEffect(() => {
+    setSelectedIndex(0);
+    setDetailView(null);
+    setStocks([]);
+    setLoading(true);
+  }, [groupIndex]);
 
   // 数据加载
   const loadData = useCallback(async () => {
+    const codes = [...symbolMap.keys()];
+    if (codes.length === 0) {
+      setStocks([]);
+      setLastUpdate(new Date().toLocaleTimeString());
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      const data = await fetchStocks([...symbolMap.keys()]);
+      const data = await fetchStocks(codes);
       setStocks(
         data.map((row) => {
           const cfg = symbolMap.get(row.code);
@@ -157,28 +188,14 @@ export function StockList({ symbols, onExit }: StockListProps) {
   /** 把目标价写入配置 + 内存行 + 详情视图；price 传 undefined 表示清除该方向 */
   const applyTarget = useCallback(
     (code: string, type: "buy" | "sell", price: number | undefined) => {
-      const key = type === "buy" ? "buyPrice" : "sellPrice";
-      const existing = configSymbols.some((s) => s.code === code);
-      // 该股从未配置且本次是清除 → 无操作
-      if (!existing && price === undefined) return;
-
-      let next: StockSymbol[];
-      if (existing) {
-        next = configSymbols.map((s) => {
-          if (s.code !== code) return s;
-          const copy = { ...s };
-          if (price === undefined) delete copy[key];
-          else copy[key] = price;
-          return copy;
-        });
-      } else {
-        // 临时查看的股票：设置目标价即写入 settings.json（下次启动成为自选股）
-        next = [...configSymbols, { code, [key]: price } as StockSymbol];
-      }
-      setConfigSymbols(next);
-      saveStockConfig(next);
+      const nextGroups = applyTargetToGroup(groups, groupIndex, code, type, price);
+      // applyTargetToGroup 在「该股从未配置且清除」时返回同一引用 → 无变化
+      if (nextGroups === groups) return;
+      setGroups(nextGroups);
+      saveStockConfig(nextGroups);
 
       // 同步列表行
+      const key: "buyPrice" | "sellPrice" = type === "buy" ? "buyPrice" : "sellPrice";
       setStocks((rows) =>
         rows.map((r) => {
           if (r.code !== code) return r;
@@ -197,7 +214,7 @@ export function StockList({ symbols, onExit }: StockListProps) {
         return copy;
       });
     },
-    [configSymbols],
+    [groups, groupIndex],
   );
 
   /** 编辑模式下回车：空输入=清除；非法值=提示；合法正数=保存 */
@@ -312,7 +329,40 @@ export function StockList({ symbols, onExit }: StockListProps) {
         }
 
         // —— 列表视图 ——
-        if (stocks.length === 0) return;
+        // 分组切换：←/→ 永远可用（即使当前组为空）
+        // 同时兼容 ESC 序列 \x1b[D / \x1b[C（部分 Windows 终端或 kitty 协议下 key.leftArrow=false）
+        if (key.leftArrow || input === "\x1b[D" || input === "\x1bOD") {
+          setGroupIndex((prev) => clampGroupIndex(prev - 1, groups.length));
+          showFlash(`← 分组 ${clampGroupIndex(groupIndex - 1, groups.length) + 1}/${groups.length}`);
+          return;
+        }
+        if (key.rightArrow || input === "\x1b[C" || input === "\x1bOC") {
+          setGroupIndex((prev) => clampGroupIndex(prev + 1, groups.length));
+          showFlash(`→ 分组 ${clampGroupIndex(groupIndex + 1, groups.length) + 1}/${groups.length}`);
+          return;
+        }
+        if (input === "[") {
+          setGroupIndex((prev) => clampGroupIndex(prev - 1, groups.length));
+          showFlash(`← 分组 ${clampGroupIndex(groupIndex - 1, groups.length) + 1}/${groups.length}`);
+          return;
+        }
+        if (input === "]") {
+          setGroupIndex((prev) => clampGroupIndex(prev + 1, groups.length));
+          showFlash(`→ 分组 ${clampGroupIndex(groupIndex + 1, groups.length) + 1}/${groups.length}`);
+          return;
+        }
+
+        if (stocks.length === 0) {
+          // 空组时只允许刷新和退出
+          if (key.escape || input === "q") {
+            onExit();
+          } else if (input === "r") {
+            setCountdown(5);
+            void loadData();
+          }
+          return;
+        }
+
         if (key.upArrow || input === "k") {
           setSelectedIndex((prev) => (prev > 0 ? prev - 1 : stocks.length - 1));
         } else if (key.downArrow || input === "j") {
@@ -338,6 +388,7 @@ export function StockList({ symbols, onExit }: StockListProps) {
         selectedIndex,
         detailView,
         targetEdit,
+        groups,
         onExit,
         loadData,
         handleCtrlC,
@@ -360,16 +411,34 @@ export function StockList({ symbols, onExit }: StockListProps) {
 
   // 列表
   const cp = (c: string) => (dimMode ? { dimColor: true } : { color: c });
+  const groupEmpty = stocks.length === 0 && !loading;
   return (
     <Box flexDirection="column">
+      {/* 顶部标题 + 分组 tab */}
       <Box marginBottom={1} justifyContent="space-between">
-        <Text bold {...cp("#00ffff")}>
-          {"  📈 自选股监控"}
-        </Text>
-        <Text dimColor>{"  🕐 "}{currentTime}</Text>
-        <Text dimColor>
-          {loading ? "  ⟳ 刷新中..." : `  ${countdown}s 后自动刷新`}
-        </Text>
+        <Box>
+          <Text bold {...cp("#00ffff")}>
+            {"  📈 自选股监控"}
+          </Text>
+          <Text dimColor>{"  · "}</Text>
+          {groups.map((g, i) => {
+            const active = i === groupIndex;
+            return (
+              <Text key={i}>
+                <Text bold={active} inverse={active} {...cp(active ? "#00ffff" : "#888888")}>
+                  {` ${g.name} `}
+                </Text>
+                <Text>{"  "}</Text>
+              </Text>
+            );
+          })}
+        </Box>
+        <Box>
+          <Text dimColor>{"  🕐 "}{currentTime}</Text>
+          <Text dimColor>
+            {loading ? "  ⟳ 刷新中..." : `  ${countdown}s 后自动刷新`}
+          </Text>
+        </Box>
       </Box>
 
       {/* 表头 */}
@@ -411,6 +480,13 @@ export function StockList({ symbols, onExit }: StockListProps) {
       </Box>
 
       <Box flexDirection="column">
+        {groupEmpty && (
+          <Box>
+            <Text {...cp("#666666")}>
+              {"  (当前分组为空)"}
+            </Text>
+          </Box>
+        )}
         {sortedStocks.map((stock, index) => {
           const isSelected = index === selectedIndex;
           const isUp = stock.changePercent >= 0;
@@ -480,11 +556,11 @@ export function StockList({ symbols, onExit }: StockListProps) {
 
       <Box marginTop={1}>
         <Text dimColor>
-          {"  ↑/↓ 选择  Enter 详情  r 手动刷新  o 排序  h 置灰/恢复  q 退出"}
+          {"  ↑/↓ 选择  ←/→ 切换分组  Enter 详情  r 刷新  o 排序  h 置灰  q 退出"}
         </Text>
       </Box>
       <Box>
-        <Text dimColor>{"  最后更新: "}{lastUpdate}{"  编辑自选股: "}</Text>
+        <Text dimColor>{"  最后更新: "}{lastUpdate}{"  编辑自选股分组: "}</Text>
         <Text {...cp("#c792ea")}>
           {osc8Link(toFileUrl(SETTINGS_PATH), SETTINGS_PATH)}
         </Text>

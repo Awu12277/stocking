@@ -27,7 +27,17 @@ export interface StockSymbol {
   sellPrice?: number;
 }
 
-/** 自选股配置段（与 dskcode `~/.dskcode/settings.json` 中的 stock 段同构） */
-export interface StockConfig {
+/**
+ * 一个自选股分组。同一分组内代码不应重复（写入时做去重校验）。
+ */
+export interface Group {
+  name: string;
   symbols: StockSymbol[];
+}
+
+/**
+ * v2 配置：多分组。自 v1（扁平 symbols）迁移后等价于一个分组。
+ */
+export interface StockConfig {
+  groups: Group[];
 }
