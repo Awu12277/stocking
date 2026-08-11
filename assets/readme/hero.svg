@@ -1,0 +1,155 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1200" height="420" viewBox="0 0 1200 420"
+     role="img" aria-labelledby="hero-title hero-desc">
+  <title id="hero-title">stocking — A 股自选股实时行情终端 CLI</title>
+  <desc id="hero-desc">暗背景面板，左侧为 stocking 项目标题、命令行徽章与元数据；右侧为模拟终端窗口，里面展示自选股列表和分时折线图，旁边有一只穿条纹长袜的萌系小生物陪伴。</desc>
+
+  <defs>
+    <pattern id="scanlines" x="0" y="0" width="2" height="2" patternUnits="userSpaceOnUse">
+      <rect width="2" height="1" fill="#000" fill-opacity="0.18"/>
+      <rect y="1" width="2" height="1" fill="transparent"/>
+    </pattern>
+    <linearGradient id="screen-glow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#062b22"/>
+      <stop offset="100%" stop-color="#04140f"/>
+    </linearGradient>
+    <clipPath id="terminal-clip">
+      <rect x="700" y="60" width="450" height="300" rx="14" ry="14"/>
+    </clipPath>
+  </defs>
+
+  <rect width="1200" height="420" rx="20" fill="#050607"/>
+  <rect x="0" y="0" width="1200" height="1" fill="#00ff41" fill-opacity="0.18"/>
+
+  <!-- ================== 左侧标题区 ================== -->
+  <g id="title-block" transform="translate(56 64)">
+    <!-- eyebrow 标签 -->
+    <g id="eyebrow">
+      <rect x="0" y="0" width="170" height="26" rx="13" fill="#0d1117" stroke="#ff1493" stroke-width="1.2"/>
+      <text x="14" y="18"
+            font-family="Microsoft YaHei, SimHei"
+            font-size="13" fill="#ff1493" font-weight="600">CLI · 自选股行情</text>
+    </g>
+
+    <!-- 主标题 -->
+    <text x="0" y="86"
+          font-family="Microsoft YaHei, SimHei"
+          font-size="64" font-weight="800" fill="#f5f5f5" letter-spacing="-1.5">stocking</text>
+
+    <!-- 副标题 -->
+    <text x="0" y="124"
+          font-family="Microsoft YaHei, SimHei"
+          font-size="20" font-weight="500" fill="#00ffff">终端内的 A 股自选股实时行情</text>
+    <text x="0" y="152"
+          font-family="Microsoft YaHei, SimHei"
+          font-size="20" font-weight="500" fill="#9ca3af">分组切换 · 分时折线 · 买卖目标价提示</text>
+
+    <!-- 命令徽章 -->
+    <g id="cmd-badge" transform="translate(0 184)">
+      <rect x="0" y="0" width="244" height="42" rx="10" fill="#0d1117" stroke="#00ff41" stroke-width="1.5"/>
+      <text x="16" y="28"
+            font-family="Consolas"
+            font-size="18" fill="#00ff41" font-weight="700">$ npx stocking</text>
+      <rect x="216" y="11" width="11" height="20" fill="#00ff41"/>
+    </g>
+
+    <!-- 元数据行 -->
+    <g id="meta" transform="translate(0 252)">
+      <g font-family="Microsoft YaHei, SimHei" font-size="12">
+        <circle cx="6" cy="6" r="4" fill="#00ff41"/>
+        <text x="18" y="10" fill="#9ca3af">MIT</text>
+        <circle cx="64" cy="6" r="4" fill="#00ffff"/>
+        <text x="76" y="10" fill="#9ca3af">Node ≥ 22</text>
+        <circle cx="158" cy="6" r="4" fill="#ff1493"/>
+        <text x="170" y="10" fill="#9ca3af">Ink · asciichart</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- ================== 右侧终端窗口 ================== -->
+  <g id="terminal-window">
+    <rect x="704" y="64" width="450" height="300" rx="14" fill="#000" fill-opacity="0.5"/>
+    <rect x="700" y="60" width="450" height="300" rx="14" fill="#0d1117" stroke="#00ff41" stroke-width="1.2"/>
+    <rect x="700" y="60" width="450" height="28" rx="14" fill="#161b22"/>
+    <rect x="700" y="74" width="450" height="14" fill="#161b22"/>
+    <circle cx="716" cy="74" r="4.5" fill="#ff5f56"/>
+    <circle cx="732" cy="74" r="4.5" fill="#ffbd2e"/>
+    <circle cx="748" cy="74" r="4.5" fill="#27c93f"/>
+    <text x="925" y="78"
+          font-family="Microsoft YaHei, SimHei"
+          font-size="12" fill="#6b7280">stocking — 分组1 (3)</text>
+
+    <g clip-path="url(#terminal-clip)">
+      <rect x="700" y="88" width="450" height="272" fill="url(#screen-glow)"/>
+      <rect x="700" y="88" width="450" height="272" fill="url(#scanlines)"/>
+
+      <!-- 标题行 -->
+      <g font-family="Microsoft YaHei, SimHei" font-size="11">
+        <text x="712" y="106" fill="#00ffff" font-weight="700">▸ 📈 自选股监控 · 分组1</text>
+        <text x="1100" y="106" fill="#6b7280">14:08</text>
+
+        <text x="712"  y="126" fill="#6b7280">代码</text>
+        <text x="764"  y="126" fill="#6b7280">名称</text>
+        <text x="836"  y="126" fill="#6b7280">最新价</text>
+        <text x="892"  y="126" fill="#6b7280">涨跌幅</text>
+        <text x="958"  y="126" fill="#6b7280">买价</text>
+        <text x="1010" y="126" fill="#6b7280">卖价</text>
+        <text x="1080" y="126" fill="#6b7280">操作</text>
+
+        <line x1="712" y1="132" x2="1138" y2="132" stroke="#1f2937" stroke-width="1"/>
+
+        <text x="712" y="148" fill="#00ffff" font-weight="700">▸ sh000001</text>
+        <text x="764" y="148" fill="#e5e7eb">上证指数</text>
+        <text x="836" y="148" fill="#e5e7eb">3150.00</text>
+        <text x="892" y="148" fill="#ff1493">+0.35%</text>
+        <text x="958" y="148" fill="#9ca3af">—</text>
+        <text x="1010" y="148" fill="#9ca3af">—</text>
+        <text x="1080" y="148" fill="#6b7280">观望</text>
+
+        <text x="712" y="166" fill="#9ca3af">  sz399006</text>
+        <text x="764" y="166" fill="#e5e7eb">创业板指</text>
+        <text x="836" y="166" fill="#e5e7eb">1820.00</text>
+        <text x="892" y="166" fill="#00ff41">-0.52%</text>
+        <text x="958" y="166" fill="#9ca3af">—</text>
+        <text x="1010" y="166" fill="#9ca3af">—</text>
+        <text x="1080" y="166" fill="#6b7280">观望</text>
+
+        <text x="712" y="184" fill="#9ca3af">  sh601899</text>
+        <text x="764" y="184" fill="#e5e7eb">紫金矿业</text>
+        <text x="836" y="184" fill="#e5e7eb">17.92</text>
+        <text x="892" y="184" fill="#00ff41">-1.54%</text>
+        <text x="958" y="184" fill="#ff1493">18.20</text>
+        <text x="1010" y="184" fill="#9ca3af">—</text>
+        <text x="1080" y="184" fill="#ff1493" font-weight="700">买入</text>
+      </g>
+
+      <!-- 分时折线 -->
+      <g transform="translate(712 210)">
+        <rect x="0" y="0" width="426" height="100" rx="6" fill="#04140f" stroke="#1f2937" stroke-width="1"/>
+        <line x1="0" y1="25" x2="426" y2="25" stroke="#1f2937" stroke-width="0.5" stroke-dasharray="2 3"/>
+        <line x1="0" y1="50" x2="426" y2="50" stroke="#1f2937" stroke-width="0.5" stroke-dasharray="2 3"/>
+        <line x1="0" y1="75" x2="426" y2="75" stroke="#1f2937" stroke-width="0.5" stroke-dasharray="2 3"/>
+        <polyline fill="none" stroke="#00ff41" stroke-width="1.6" stroke-linejoin="round"
+          points="0,68 12,66 24,72 36,70 48,64 60,62 72,66 84,60 96,56 108,60 120,52 132,48 144,52 156,46 168,42 180,48 192,40 204,44 216,38 228,42 240,32 252,36 264,28 276,34 288,40 300,32 312,38 324,30 336,34 348,28 360,32 372,24 384,28 396,20 408,24 420,18"/>
+        <circle cx="420" cy="18" r="3" fill="#ff1493"/>
+        <rect x="372" y="6" width="60" height="14" rx="3" fill="#ff1493"/>
+        <text x="376" y="16" font-family="Microsoft YaHei, SimHei"
+              font-size="10" font-weight="700" fill="#fff">17.92 -1.54%</text>
+      </g>
+
+      <!-- 底部状态条 -->
+      <g transform="translate(712 322)" font-family="Microsoft YaHei, SimHei" font-size="10">
+        <text x="0" y="10" fill="#6b7280">[←][→] 分组  [↑][↓] 切换  [Enter] 详情  [o] 排序  [r] 刷新  [q] 退出</text>
+        <text x="0" y="26" fill="#00ff41">⟳ 刷新中… 4s 后自动刷新</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- 底部品牌 -->
+  <text x="56" y="394"
+        font-family="Consolas"
+        font-size="11" fill="#6b7280">github.com/stocking/stocking</text>
+  <text x="1144" y="394" text-anchor="end"
+        font-family="Microsoft YaHei, SimHei"
+        font-size="11" fill="#6b7280">v0.2.0</text>
+</svg>
