@@ -1,6 +1,6 @@
 {
   "name": "stocking",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A 股自选股实时行情终端 CLI（基于 ink + asciichart）",
   "type": "module",
   "bin": {
